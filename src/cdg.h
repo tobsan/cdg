@@ -92,8 +92,15 @@ typedef struct {
     CDG_Data **packets;
 } CDG_Array;
 
-CDG_Array read_cdg_file(char *filename);
+// Read functions
+CDG_Array cdg_read_file(char *filename);
 int cdg_parse_packet(SubCode *sub, CDG_Data *packet);
+
+// Write functions
+int cdg_write_file(CDG_Array data, char *filename);
+int cdg_create_packet(CDG_Data *packet, SubCode *sub);
+
+// Auxiliary functions
 unsigned char cdg_get_command(SubCode *sub);
 int cdg_contains_data(SubCode *sub);
 unsigned char cdg_get_instruction(SubCode *sub);

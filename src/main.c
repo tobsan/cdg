@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     }
 
     char *filename = argv[1];
-    CDG_Array contents = read_cdg_file(filename);
+    CDG_Array contents = cdg_read_file(filename);
     
     CDG_Data *current;
     int i;

@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-CDG_Array read_cdg_file(char *filename)
+CDG_Array cdg_read_file(char *filename)
 {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -145,6 +145,20 @@ int cdg_parse_packet(SubCode *sub, CDG_Data *packet)
 
     return 0;
 
+}
+
+int cdg_write_file(CDG_Array data, char *filename)
+{
+    return 0;
+}
+
+int cdg_create_packet(CDG_Data *packet, SubCode *sub)
+{
+    switch (packet->packet_type) {
+        default:
+            return 0;
+            break;
+    }
 }
 
 unsigned char cdg_get_command(SubCode *sub)
