@@ -1,48 +1,10 @@
 #include "cdg.h"
 
-#include <time.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-int main(int argc, char **argv)
-{
-    // Open file.
-    if(argc < 2) {
-        printf("Usage: %s <cdg-file>\n", argv[0]);
-        exit(1);
-    }
-
-    char *filename = argv[1];
-    CDG_Array contents = read_cdg_file(filename);
-    
-    CDG_Data *current;
-    int i;
-    for(i = 0; i < contents.size; i++) {
-        current = contents.packets[i];
-        switch(current->packet_type) {
-            case EMPTY:
-            case MEMORY_PRESET:
-            case BORDER_PRESET:
-            case TILE_BLOCK:
-            case TILE_BLOCK_XOR:
-            case LOAD_COLORS_LOW:
-            case LOAD_COLORS_HIGH:
-            case SCROLL_PRESET:
-            case SCROLL_COPY:
-            case DEFINE_TRANSPARENT:
-                break;
-        }
-        // Don't forget to do this for EACH block!
-        free(current);
-    }
-
-    free(contents.packets);
-    return 0;
-}
 
 CDG_Array read_cdg_file(char *filename)
 {
@@ -185,12 +147,7 @@ int cdg_parse_packet(SubCode *sub, CDG_Data *packet)
 
 }
 
-int cdg_diff_timestamp(struct timeval *start, struct timeval *stop)
-{
-    return ((stop->tv_sec - start->tv_sec) * 1e6) + (stop->tv_usec - start->tv_usec);
-}
-
-char cdg_get_command(SubCode *sub)
+unsigned char cdg_get_command(SubCode *sub)
 {
     return sub->command & CDG_MASK;
 }
@@ -200,7 +157,7 @@ int cdg_contains_data(SubCode *sub)
     return cdg_get_command(sub) == CDG_COMMAND;
 }
 
-char cdg_get_instruction(SubCode *sub)
+unsigned char cdg_get_instruction(SubCode *sub)
 {
     return sub->instruction & CDG_MASK;
 }

@@ -1,0 +1,9 @@
+A small c library for reading/writing CD+G files containing graphics,
+typically used for karaoke.
+
+Building and installing
+=======================
+$ ./configure && make && make install
+
+
+
