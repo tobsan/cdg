@@ -30,14 +30,16 @@
 #define CDG_SECTORS_PER_SECOND 75
 #define CDG_PACKETS_PER_SECOND (CDG_PACKETS_PER_SECTOR * CDG_SECTORS_PER_SECOND)
 
+// RAW DATA
 typedef struct {
-    char  command;
+    char  command; // Magic number for CDG
     char  instruction;
     char  parityQ[2];
     char  data[16];
     char  parityP[4];
 } SubCode;
 
+// The different instructions available
 typedef enum {
     EMPTY,
     MEMORY_PRESET,
@@ -52,7 +54,18 @@ typedef enum {
     DEFINE_TRANSPARENT
 } packet_t;
 
-// Tiles ar 6x12
+// The data length is always 16 bytes, so no this is TLV without the L.
+typedef struct {
+    packet_t type;
+    void *data;
+} CDG_Packet;
+
+typedef struct {
+    CDG_Packet **packets;
+    unsigned int size;
+} CDG_Array;
+
+// Tiles are 6x12
 typedef struct {
     unsigned char    color0;          // Only lower 4 bits are used, mask with 0x0F
     unsigned char    color1;          // Only lower 4 bits are used, mask with 0x0F
@@ -73,32 +86,16 @@ typedef struct {
     unsigned char blue;  // 4 bits, located in most significant bits
 } CDG_RGB;
 
-union CDG_Packet {
-    unsigned char mem_preset;       // Color only, mask with 0x0F
-    unsigned char border_preset;     // Color only, mask with 0x0F
-    unsigned char transparent;       // Color only, mask with 0x0F
-    CDG_Tile tile;
-    CDG_Scroll scroll;
-    CDG_RGB load_clut[8];
-}; 
-
-typedef struct {
-    packet_t packet_type;
-    union CDG_Packet packet_data;
-} CDG_Data;
-
-typedef struct {
-    unsigned int size;
-    CDG_Data **packets;
-} CDG_Array;
-
 // Read functions
-CDG_Array cdg_read_file(char *filename);
-int cdg_parse_packet(SubCode *sub, CDG_Data *packet);
+CDG_Packet **cdg_read_file(char *filename);
+CDG_Packet *cdg_parse_packet(SubCode *sub);
 
 // Write functions
-int cdg_write_file(CDG_Array data, char *filename);
-int cdg_create_packet(CDG_Data *packet, SubCode *sub);
+int cdg_write_file(CDG_Packet **packets, char *filename);
+SubCode *cdg_create_packet(CDG_Packet *packet);
+
+// General function to free
+void cdg_packet_put(CDG_Packet *packet);
 
 // Auxiliary functions
 unsigned char cdg_get_command(SubCode *sub);

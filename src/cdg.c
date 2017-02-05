@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-CDG_Array cdg_read_file(char *filename)
+CDG_Packet **cdg_read_file(char *filename)
 {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -14,29 +14,67 @@ CDG_Array cdg_read_file(char *filename)
         exit(2);
     }
 
-    // Allocate enough for four minutes.
-    int size = CDG_PACKETS_PER_SECOND * 240;
-    CDG_Data **buf = malloc(sizeof(CDG_Data *) * size);
-
     SubCode subcode;
-    int i = 0;
 
     // While file has not ended
     while (fread(&subcode, sizeof(SubCode), 1, file)) {
-        CDG_Data *packet = malloc(sizeof(CDG_Data));
-        cdg_parse_packet(&subcode, packet);
-        buf[i++] = packet;
-
-        // We need to resize the buffer, so we increase by 50%
-        if(i == size) {
-            size = size * 3 / 2;
-            buf = realloc(buf, sizeof(CDG_Data *) * size);
+        
+        CDG_Packet *packet = cdg_parse_packet(&subcode);
+        if (!packet) {
+            printf("Failed to parse packet\n");
+            exit(1);
         }
-    }
 
-    // We may have allocated too much.
-    size = i; 
-    buf = realloc(buf, sizeof(CDG_Data *) * size);
+        printf("Packet instruction: %i\n", packet->type);
+        switch(packet->type) {
+            case EMPTY:
+                printf("Packet is empty\n");
+                break;
+            case MEMORY_PRESET: {
+                unsigned int *color = (unsigned int *)packet->data;
+                printf("Memory preset with color: %i\n", *color);
+                break;
+            }
+            case BORDER_PRESET: {
+                unsigned int *color = (unsigned int *)packet->data;
+                printf("Border preset with color: %i\n", *color);
+                break;
+            }
+            case TILE_BLOCK:
+            case TILE_BLOCK_XOR: {
+                CDG_Tile *tile = (CDG_Tile *)packet->data;
+                printf("Tile block with color0: %i, color1: %i, row: %i, column: %i\n", tile->color0, tile->color1, tile->row, tile->column);
+                // TODO: Print tile pixels
+                break;
+            }
+            case LOAD_COLORS_LOW:
+            case LOAD_COLORS_HIGH: {
+                CDG_RGB *rgbArray = (CDG_RGB *)(packet->data);
+                for (int i = 0; i < 8; i++) {
+                    CDG_RGB rgb = rgbArray[i];
+                    printf("Color %i-%i-%i\n",
+                           rgb.red, rgb.green, rgb.blue);
+                }
+                break;
+            }
+            case SCROLL_COPY:
+            case SCROLL_PRESET: {
+                CDG_Scroll *scroll = (CDG_Scroll *)packet->data;
+                printf("Scroll color: %i, hscroll: %i, vscroll: %i\n",
+                       scroll->color, scroll->hScroll, scroll->vScroll);
+                break;
+            }
+            case DEFINE_TRANSPARENT: {
+                unsigned int *color = (unsigned int *)packet->data;
+                printf("Transparent color: %i\n", *color);
+                break;
+            }
+            default:
+                break;
+        }
+
+        cdg_packet_put(packet);
+    }
 
     // Sanity check and close the file
     if (!feof(file) || ferror(file)) {
@@ -45,116 +83,145 @@ CDG_Array cdg_read_file(char *filename)
     fclose(file);
     // Done doing file stuff    
 
-    CDG_Array result;
-    result.size = size;
-    result.packets = buf;
-
-    return result;
+    return; // TODO: return something proper
 }
 
-int cdg_parse_packet(SubCode *sub, CDG_Data *packet)
+CDG_Packet *cdg_parse_packet(SubCode *sub)
 {
     char instr;
     int i;
 
-    if (cdg_contains_data(sub)) {
-        instr = cdg_get_instruction(sub);
-        switch (instr) {
-            case CDG_MEMORY_PRESET:
-                if( (sub->data[1] & 0x0F) != 0) { // Repeat packet
-                    packet->packet_type = EMPTY;
-                } else {
-                    packet->packet_type = MEMORY_PRESET;
-                    packet->packet_data.mem_preset = sub->data[0] & 0x0F; // Color
-                }
-                break;
-            case CDG_BORDER_PRESET:
-                packet->packet_type = BORDER_PRESET;
-                packet->packet_data.border_preset = sub->data[0] & 0x0F; // Color
-                break;
-            case CDG_TILE_BLOCK:
-            case CDG_TILE_BLOCK_XOR: 
-                if (instr == CDG_TILE_BLOCK) {
-                    packet->packet_type = TILE_BLOCK;
-                } else {
-                    packet->packet_type = TILE_BLOCK_XOR;
-                }
-                packet->packet_data.tile = (CDG_Tile) {
-                    sub->data[0] & 0x0F, // Color0
-                    sub->data[1] & 0x0F, // Color1
-                    sub->data[2] & 0x1F, // Row
-                    sub->data[3] & 0x3F, // Column
-                };
-
-                for(i = 0; i < 12; i++) {
-                    // Only lower 6 bits of each byte are used
-                    packet->packet_data.tile.tilePixels[i] = sub->data[i+4] & 0x3F;
-                }
-                break;
-            case CDG_SCROLL_PRESET:
-            case CDG_SCROLL_COPY:
-                if (instr == CDG_SCROLL_PRESET) {
-                    packet->packet_type = SCROLL_PRESET;
-                } else {
-                    packet->packet_type = SCROLL_COPY;
-                }
-                
-                packet->packet_data.scroll = (CDG_Scroll) {
-                    sub->data[0] & 0x0F, // Color
-                    sub->data[1] & 0x3F, // hScroll
-                    sub->data[2] & 0x3F  // vScroll
-                };
-                break;
-            case CDG_DEFINE_TRANSPARENT:
-                packet->packet_type = DEFINE_TRANSPARENT;
-                packet->packet_data.transparent = sub->data[0];
-                break;
-            case CDG_LOAD_COLORS_LOW:
-            case CDG_LOAD_COLORS_HIGH:
-                if (instr == CDG_LOAD_COLORS_LOW) {
-                    packet->packet_type = LOAD_COLORS_LOW;
-                } else {
-                    packet->packet_type = LOAD_COLORS_HIGH;
-                } 
-
-                short data;
-                char red;
-                char green;
-                char blue;
-                for (i = 0; i < 8; i++) {
-                    // AND with 0x3F3F to clear P and Q channel
-                    data = sub->data[i] & 0x3F3F;
-                    red = (data & 0x3C00) << 2;
-                    green = ((data & 0x0030) << 6) | ((data & 0x0300) << 8);
-                    blue = (data & 0x000F) << 12;
-
-                    packet->packet_data.load_clut[i] = (CDG_RGB) {
-                        red, green, blue
-                    };
-                } 
-                break;
-            default: 
-                packet->packet_type = EMPTY;
-                return -1;
-                break;
-        }
-    } else {
-        // We need all the packets for timing
-        packet->packet_type = EMPTY;
+    CDG_Packet *packet = malloc(sizeof(CDG_Packet));
+    if (!packet) {
+        fprintf(stderr, "Couldn't allocate packet\n");
+        return NULL;
     }
 
-    return 0;
+    // Even if a packet contains no data, we need it for timing purposes
+    if (!cdg_contains_data(sub)) {
+        packet->type = EMPTY;
+        packet->data = NULL;
+    }
 
+    instr = cdg_get_instruction(sub);
+    switch (instr) {
+        case CDG_MEMORY_PRESET:
+            if( (sub->data[1] & 0x0F) != 0) { // Repeat packet
+                packet->type = EMPTY;
+                packet->data = NULL;
+            } else {
+                packet->type = MEMORY_PRESET;
+                unsigned int color = sub->data[0] & 0x0F;
+                packet->data = malloc(sizeof(color));
+                memcpy(packet->data, &color, sizeof(color));
+            }
+            break;
+        case CDG_BORDER_PRESET:
+            packet->type = BORDER_PRESET;
+            unsigned int color = sub->data[0] & 0x0F;
+            packet->data = malloc(sizeof(color));
+            memcpy(packet->data, &color, sizeof(color));
+            break;
+        case CDG_TILE_BLOCK:
+        case CDG_TILE_BLOCK_XOR: 
+            if (instr == CDG_TILE_BLOCK) {
+                packet->type = TILE_BLOCK;
+            } else {
+                packet->type = TILE_BLOCK_XOR;
+            }
+
+            CDG_Tile *tile = (CDG_Tile *)(malloc (sizeof(CDG_Tile)));
+            tile->color0 = sub->data[0] & 0x0F;
+            tile->color1 = sub->data[1] & 0x0F;
+            tile->row    = sub->data[2] & 0x1F;
+            tile->column = sub->data[3] & 0x3F;
+
+            for(i = 0; i < 12; i++) {
+                // Only lower 6 bits of each byte are used
+                tile->tilePixels[i] = sub->data[i+4] & 0x3F;
+            }
+
+            packet->data = tile;
+            break;
+        case CDG_LOAD_COLORS_LOW:
+        case CDG_LOAD_COLORS_HIGH:
+            if (instr == CDG_LOAD_COLORS_LOW) {
+                packet->type = LOAD_COLORS_LOW;
+            } else {
+                packet->type = LOAD_COLORS_HIGH;
+            } 
+
+            short data;
+            char red;
+            char green;
+            char blue;
+
+            int arrayLength = 8;
+            CDG_RGB *array = calloc(arrayLength, sizeof(CDG_RGB));
+            for (i = 0; i < arrayLength; i++) {
+                // AND with 0x3F3F to clear P and Q channel
+                data = sub->data[i] & 0x3F3F;
+                printf("Color data: %i\n", data);
+                red = (data & 0x3C00) << 2;
+                green = ((data & 0x0030) << 6) | ((data & 0x0300) << 8);
+                blue = (data & 0x000F) << 12;
+                printf("Parsing colors: %i-%i-%i\n", red, green, blue);
+
+                CDG_RGB rgb;
+                rgb.red = red;
+                rgb.green = green;
+                rgb.blue = blue;
+
+                array[i] = rgb;
+            } 
+            packet->data = array;
+            break;
+        case CDG_SCROLL_PRESET:
+        case CDG_SCROLL_COPY:
+            if (instr == CDG_SCROLL_PRESET) {
+                packet->type = SCROLL_PRESET;
+            } else {
+                packet->type = SCROLL_COPY;
+            }
+
+            CDG_Scroll *scroll = (CDG_Scroll *)(malloc (sizeof(CDG_Scroll)));
+            scroll->color   = sub->data[0] & 0x0F;
+            scroll->hScroll = sub->data[1] & 0x3F;
+            scroll->vScroll = sub->data[2] & 0x3F;
+
+            packet->data = scroll;
+            break;
+        case CDG_DEFINE_TRANSPARENT:
+            packet->type = DEFINE_TRANSPARENT;
+            packet->data = malloc(sizeof(sub->data[0]));
+            memcpy(packet->data, &sub->data[0], sizeof(sub->data[0]));
+            break;
+        default: 
+            packet->type = EMPTY;
+            packet->data = NULL;
+            break;
+    }
+
+    return packet;
 }
 
-int cdg_write_file(CDG_Array data, char *filename)
+void cdg_packet_put(CDG_Packet *packet)
+{
+    if (packet->data != NULL) {
+        free(packet->data);
+    }
+
+    free(packet);
+}
+
+int cdg_write_file(CDG_Packet **packets, char *filename)
 {
     return 0;
 }
 
-int cdg_create_packet(CDG_Data *packet, SubCode *sub)
+SubCode *cdg_create_packet(CDG_Packet *packet)
 {
-    switch (packet->packet_type) {
+    switch (packet->type) {
         default:
             return 0;
             break;

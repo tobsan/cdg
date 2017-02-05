@@ -1,2 +1,0 @@
-autoscan: warning: missing AC_CHECK_FUNCS([strerror]) wanted by: 
-	src/cdg.c:12
