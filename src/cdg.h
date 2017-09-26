@@ -45,17 +45,40 @@
 #define CDG_LOAD_COLORS_HIGH 31
 #define CDG_TILE_BLOCK_XOR 38
 
+/*
+ * Scrolling values
+ */
+#define DONT_SCROLL 0
+#define SCROLL_RIGHT 1
+#define SCROLL_LEFT 2
+#define SCROLL_DOWN 1
+#define SCROLL_UP 2
+
+/*
+ * Timing information
+ */
 #define CDG_PACKETS_PER_SECTOR 4
 #define CDG_SECTORS_PER_SECOND 75
 #define CDG_PACKETS_PER_SECOND (CDG_PACKETS_PER_SECTOR * CDG_SECTORS_PER_SECOND)
+#define CDG_USECS_PER_PACKET (1000000 / CDG_PACKETS_PER_SECOND)
 
-// RAW DATA
+/*
+ * Graphics information
+ */
+#define CDG_SCREEN_WIDTH 300
+#define CDG_SCREEN_HEIGHT 216
+#define CDG_VIEW_WIDTH 294
+#define CDG_VIEW_HEIGHT 204
+
+/*
+ * This represents the raw data. 24 bytes.
+ */
 typedef struct {
     char  command; // Magic number for CDG
     char  instruction;
-    char  parityQ[2];
+    char  parityQ[2]; // Unused
     char  data[16];
-    char  parityP[4];
+    char  parityP[4]; // Unused
 } SubCode;
 
 // The different instructions available
@@ -67,24 +90,26 @@ typedef enum {
     TILE_BLOCK_XOR,
     LOAD_COLORS_LOW,
     LOAD_COLORS_HIGH,
-    // These below are less commonly used
+    // These three are less commonly used
     SCROLL_PRESET,
     SCROLL_COPY,
     DEFINE_TRANSPARENT
 } packet_t;
 
-// The data length is always 16 bytes, so no this is TLV without the L.
+// The data length is always 16 bytes, so now this is TLV without the L.
 typedef struct {
     packet_t type;
     void *data;
 } CDG_Packet;
 
-typedef struct {
-    CDG_Packet **packets;
-    unsigned int size;
-} CDG_Array;
-
-// Tiles are 6x12
+/*
+ * Tile instructions set 6x12 pixels. The coloring is done binary, so that each
+ * char in tilePixels holds 6 bits (the 6 lower bits) and if the bit is 0, then
+ * use color0, if it is 1, use color 1.
+ *
+ * Row and column point to where on the screen to start. To convert to pixels,
+ * multiply row by 12 and column by 6.
+ */
 typedef struct {
     unsigned char    color0;          // Only lower 4 bits are used, mask with 0x0F
     unsigned char    color1;          // Only lower 4 bits are used, mask with 0x0F
@@ -94,19 +119,37 @@ typedef struct {
 } CDG_Tile;
 
 typedef struct {
-    unsigned char color;   // Only lower 4 bits are used, mask with 0x0F
-    unsigned char hScroll; // Only lower 6 bits are used, mask with 0x3F
-    unsigned char vScroll; // Only lower 6 bits are used, mask with 0x3F
+    unsigned char color;   		// Only lower 4 bits are used, mask with 0x0F
+	unsigned char hScroll_cmd;
+	unsigned char hScroll_offset;
+	unsigned char vScroll_cmd;
+	unsigned char vScroll_offset;
 } CDG_Scroll;
 
+/*
+ * Holds the RGB values for one color setting. Each setting uses 4x4x4
+ * bits which gives a maximum of 4096 colors.
+ */  
 typedef struct {
-    unsigned char red;   // 4 bits, located in most significant bits
-    unsigned char green; // 4 bits, located in most significant bits
-    unsigned char blue;  // 4 bits, located in most significant bits
+    unsigned char red;   // 4 bits, located in least significant bits
+    unsigned char green; // 4 bits, located in least significant bits
+    unsigned char blue;  // 4 bits, located in least significant bits
 } CDG_RGB;
 
-// Read functions
-CDG_Packet **cdg_read_file(char *filename);
+/*
+ * The state of a cdg renderer
+ */
+typedef struct {
+    CDG_RGB color_table[16];
+    unsigned char bg_color; // These three are 4-bit indices to the color_table
+    unsigned char border_color;
+    unsigned char transparent_color;
+    unsigned char pixels[CDG_SCREEN_WIDTH][CDG_SCREEN_HEIGHT];
+} cdg;
+
+// Processes a CDG packet and updates the given state accordingly
+int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state);
+
 // Parses a single packet given a 24-byte SubCode
 CDG_Packet cdg_parse_packet(SubCode *sub);
 
