@@ -232,19 +232,6 @@ void cdg_packet_put(CDG_Packet *packet)
 
     free(packet);
 }
-
-int cdg_write_file(CDG_Packet **packets, char *filename)
-{
-    return 0;
-}
-
-SubCode *cdg_create_packet(CDG_Packet *packet)
-{
-    switch (packet->type) {
-        default:
-            return 0;
-            break;
-    }
 }
 
 unsigned char cdg_get_command(SubCode *sub)

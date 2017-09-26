@@ -107,11 +107,8 @@ typedef struct {
 
 // Read functions
 CDG_Packet **cdg_read_file(char *filename);
-CDG_Packet *cdg_parse_packet(SubCode *sub);
-
-// Write functions
-int cdg_write_file(CDG_Packet **packets, char *filename);
-SubCode *cdg_create_packet(CDG_Packet *packet);
+// Parses a single packet given a 24-byte SubCode
+CDG_Packet cdg_parse_packet(SubCode *sub);
 
 // General function to free
 void cdg_packet_put(CDG_Packet *packet);
