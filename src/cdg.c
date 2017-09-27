@@ -34,15 +34,36 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
 
         case MEMORY_PRESET: {
             unsigned char *color = (unsigned char *)packet->data;
-            printf("Setting bg color to: %u\n", *color);
-            cdg_state->bg_color = *color;
+            for (int i = 0; i < CDG_SCREEN_WIDTH; i++) {
+                for (int j = 0; j < CDG_SCREEN_HEIGHT; j++) {
+                    cdg_state->pixels[i][j] = *color;
+                }
+            }
             break;
         }
 
         case BORDER_PRESET: {
             unsigned char *color = (unsigned char *)packet->data;
-            printf("Setting border color to %u\n", *color);
-            cdg_state->border_color = *color;
+
+            int border_width = (CDG_SCREEN_WIDTH - CDG_VIEW_WIDTH) / 2;
+            int border_height = (CDG_SCREEN_HEIGHT - CDG_VIEW_HEIGHT) / 2;
+
+            // Left and right borders
+            for (int i = 0; i < border_width; i++) {
+                for (int j = 0; j < CDG_SCREEN_HEIGHT; j++) {
+                    cdg_state->pixels[i][j] = *color;
+                    cdg_state->pixels[CDG_SCREEN_WIDTH - i - 1][j] = *color;
+                }
+            }
+
+            // Top and bottom borders
+            for (int i = 0; i < CDG_SCREEN_WIDTH; i++) {
+                for (int j = 0; j < border_height; j++) {
+                    cdg_state->pixels[i][j] = *color;
+                    cdg_state->pixels[i][CDG_SCREEN_HEIGHT - j - 1] = *color;
+                }
+            }
+
             break;
         }
 
