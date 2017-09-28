@@ -19,11 +19,9 @@
 
 #include "cdg.h"
 
-#include <string.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/types.h>
+#include <string.h> // memcpy
+#include <stdlib.h> // malloc, calloc
+#include <stdio.h> // printf
 
 int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
 {
@@ -201,39 +199,6 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
     return 0;
 }
 
-CDG_Packet **cdg_read_file(char *filename)
-{
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        fprintf(stderr, "Error while opening file: %s\n", strerror(errno));
-        exit(2);
-    }
-
-    SubCode subcode;
-    cdg cdg_state;
-
-    // While file has not ended
-    while (fread(&subcode, sizeof(SubCode), 1, file)) {
-        
-        CDG_Packet packet = cdg_parse_packet(&subcode);
-        if(cdg_process_packet(&packet, &cdg_state) != 0) {
-            printf("Something went wrong\n");
-            return 0;
-        }
-        // Free the packet
-        cdg_packet_put(&packet);
-    }
-
-    // Sanity check and close the file
-    if (!feof(file) || ferror(file)) {
-        fprintf(stderr, "Reading of file failed\n");
-    }
-    fclose(file);
-    // Done doing file stuff    
-
-    return NULL; // TODO: return something proper
-}
-
 CDG_Packet cdg_parse_packet(SubCode *sub)
 {
     char instr;
@@ -250,7 +215,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
     instr = cdg_get_instruction(sub);
     switch (instr) {
         case CDG_MEMORY_PRESET:
+            printf("INSTR: MEMORY_PRESET\n");
             if( (sub->data[1] & 0x0F) != 0) { // Repeat packet
+                // We treat repeat packets as empty, since we assume
+                // a realiable data stream
                 packet.type = EMPTY;
                 packet.data = NULL;
             } else {
@@ -261,6 +229,7 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
             }
             break;
         case CDG_BORDER_PRESET:
+            printf("INSTR: BORDER_PRESET\n");
             packet.type = BORDER_PRESET;
             unsigned char color = sub->data[0] & 0x0F;
             packet.data = malloc(sizeof(color));
@@ -269,8 +238,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_TILE_BLOCK:
         case CDG_TILE_BLOCK_XOR: 
             if (instr == CDG_TILE_BLOCK) {
+                printf("INSTR: TILE_BLOCK\n");
                 packet.type = TILE_BLOCK;
             } else {
+                printf("INSTR: TILE_BLOCK_XOR\n");
                 packet.type = TILE_BLOCK_XOR;
             }
 
@@ -290,8 +261,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_LOAD_COLORS_LOW:
         case CDG_LOAD_COLORS_HIGH:
             if (instr == CDG_LOAD_COLORS_LOW) {
+                printf("INSTR: LOAD_COLORS_LOW\n");
                 packet.type = LOAD_COLORS_LOW;
             } else {
+                printf("INSTR: LOAD_COLORS_HIGH\n");
                 packet.type = LOAD_COLORS_HIGH;
             } 
 
@@ -305,7 +278,6 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
             for (i = 0; i < array_length; i++) {
                 // AND with 0x3F3F to clear P and Q channel
                 data = sub->data[i] & 0x3F3F;
-                printf("Color data: %i\n", data);
 
                 // Parse out the red, green and blue parts and shift them down
                 // to hold the least significant bits.
@@ -324,8 +296,6 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
                 unsigned char green_low = (data >> 4) & 0x000F;
                 green = green_high | green_low;
 
-                printf("Parsing colors: %u-%u-%u\n", red, green, blue);
-
                 CDG_RGB rgb;
                 rgb.red = red;
                 rgb.green = green;
@@ -338,8 +308,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_SCROLL_PRESET:
         case CDG_SCROLL_COPY:
             if (instr == CDG_SCROLL_PRESET) {
+                printf("INSTR: SCROLL_PRESET\n");
                 packet.type = SCROLL_PRESET;
             } else {
+                printf("INSTR: SCROLL_COPY\n");
                 packet.type = SCROLL_COPY;
             }
 
@@ -355,12 +327,14 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
             packet.data = scroll;
             break;
         case CDG_DEFINE_TRANSPARENT:
+            printf("INSTR: DEFINE_TRANSPARENT\n");
             packet.type = DEFINE_TRANSPARENT;
             packet.data = malloc(sizeof(sub->data[0]));
             sub->data[0] &= 0x0F; // Only lower four bits
             memcpy(packet.data, &sub->data[0], sizeof(sub->data[0]));
             break;
         default: 
+            printf("INSTR: Caught default clause!\n");
             packet.type = EMPTY;
             packet.data = NULL;
             break;
