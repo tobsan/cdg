@@ -22,18 +22,55 @@
 #include <string.h> // memcpy
 #include <stdlib.h> // malloc, calloc
 #include <stdio.h> // printf
+#include <stdarg.h> // va_list and friends
+#include <errno.h> // errno
+
+// Logging utilities
+int verbose = 1;
+int log_to_file = 1;
+const char *log_file = "libcdg.log";
+
+// Logging function
+// TODO: Close the file, perhaps?
+int log_printf(const char *fmt, ...)
+{
+    if (verbose) {
+        static FILE *output = NULL;
+        if (!log_to_file && output == NULL) {
+            output = stdout;
+        } else if (log_to_file && output == NULL) {
+            output = fopen(log_file, "w");
+            if (NULL == output) {
+                fprintf(stderr, "Unable to open log file: %s\n", strerror(errno));
+            }
+        }
+
+        va_list args;
+        va_start(args, fmt);
+        vfprintf(output, fmt, args);
+        va_end(args);
+    }
+
+    return 0;
+}
 
 int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
 {
     switch(packet->type) {
         case EMPTY:
-            printf("Packet is empty\n");
+            // Do nothing, but we need to handle it for timing purposes
+            log_printf("PROCESS: Empty packet\n");
             break;
 
         case MEMORY_PRESET: {
+            log_printf("PROCESS: Memory preset\n");
+
             unsigned char *color = (unsigned char *)packet->data;
-            for (int i = 0; i < CDG_SCREEN_WIDTH; i++) {
-                for (int j = 0; j < CDG_SCREEN_HEIGHT; j++) {
+            int border_width = (CDG_SCREEN_WIDTH - CDG_VIEW_WIDTH) / 2;
+            int border_height = (CDG_SCREEN_HEIGHT - CDG_VIEW_HEIGHT) / 2;
+
+            for (int i = border_width; i < CDG_SCREEN_WIDTH - border_width; i++) {
+                for (int j = border_height; j < CDG_SCREEN_HEIGHT - border_height; j++) {
                     cdg_state->pixels[i][j] = *color;
                 }
             }
@@ -41,6 +78,8 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
         }
 
         case BORDER_PRESET: {
+            log_printf("PROCESS: Border preset\n");
+
             unsigned char *color = (unsigned char *)packet->data;
 
             int border_width = (CDG_SCREEN_WIDTH - CDG_VIEW_WIDTH) / 2;
@@ -67,6 +106,12 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
 
         case TILE_BLOCK:
         case TILE_BLOCK_XOR: {
+            if (packet->type == TILE_BLOCK_XOR) {
+                log_printf("PROCESS: Tile block XOR\n");
+            } else {
+                log_printf("PROCESS: Tile block\n");
+            }
+
             CDG_Tile *tile = (CDG_Tile *)packet->data;
             unsigned int start_row_px = tile->row * 12;
             unsigned int start_col_px = tile->column * 6;
@@ -104,6 +149,8 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
         }
 
         case LOAD_COLORS_LOW: {
+            log_printf("PROCESS: Load colors low\n");
+
             CDG_RGB *rgbArray = (CDG_RGB *)(packet->data);
             for (int i = 0; i < 8; i++) {
                 cdg_state->color_table[i] = rgbArray[i];
@@ -112,6 +159,8 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
         }
 
         case LOAD_COLORS_HIGH: {
+            log_printf("PROCESS: Load colors high\n");
+
             CDG_RGB *rgbArray = (CDG_RGB *)(packet->data);
             for (int i = 8; i < 16; i++) {
                 cdg_state->color_table[i] = rgbArray[i];
@@ -120,10 +169,13 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
         }
 
         case SCROLL_COPY: {
+            log_printf("PROCESS: Scroll copy\n");
             // TODO: Handle copy-scrolling
             break;
         }
         case SCROLL_PRESET: {
+            log_printf("PROCESS: Scroll preset\n");
+
             CDG_Scroll *scroll = (CDG_Scroll *)packet->data;
             unsigned char preset_color = scroll->color;
 
@@ -185,12 +237,16 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
         }
 
         case DEFINE_TRANSPARENT: {
+            log_printf("PROCESS: Define transparent\n");
+
             unsigned char *color = (unsigned char *)packet->data;
             cdg_state->transparent_color = *color;
             break;
         }
 
         default:
+            log_printf("PROCESS: Invalid packet type\n");
+
             return 1; // This should be an error
             break;
     }
@@ -214,7 +270,8 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
     instr = cdg_get_instruction(sub);
     switch (instr) {
         case CDG_MEMORY_PRESET:
-            printf("INSTR: MEMORY_PRESET\n");
+            log_printf("INSTR: MEMORY_PRESET\n");
+
             if( (sub->data[1] & 0x0F) != 0) { // Repeat packet
                 // We treat repeat packets as empty, since we assume
                 // a realiable data stream
@@ -228,7 +285,8 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
             }
             break;
         case CDG_BORDER_PRESET:
-            printf("INSTR: BORDER_PRESET\n");
+            log_printf("INSTR: BORDER_PRESET\n");
+
             packet.type = BORDER_PRESET;
             unsigned char color = sub->data[0] & 0x0F;
             packet.data = malloc(sizeof(color));
@@ -237,10 +295,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_TILE_BLOCK:
         case CDG_TILE_BLOCK_XOR: 
             if (instr == CDG_TILE_BLOCK) {
-                printf("INSTR: TILE_BLOCK\n");
+                log_printf("INSTR: TILE_BLOCK\n");
                 packet.type = TILE_BLOCK;
             } else {
-                printf("INSTR: TILE_BLOCK_XOR\n");
+                log_printf("INSTR: TILE_BLOCK_XOR\n");
                 packet.type = TILE_BLOCK_XOR;
             }
 
@@ -260,10 +318,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_LOAD_COLORS_LOW:
         case CDG_LOAD_COLORS_HIGH:
             if (instr == CDG_LOAD_COLORS_LOW) {
-                printf("INSTR: LOAD_COLORS_LOW\n");
+                log_printf("INSTR: LOAD_COLORS_LOW\n");
                 packet.type = LOAD_COLORS_LOW;
             } else {
-                printf("INSTR: LOAD_COLORS_HIGH\n");
+                log_printf("INSTR: LOAD_COLORS_HIGH\n");
                 packet.type = LOAD_COLORS_HIGH;
             } 
 
@@ -307,10 +365,10 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
         case CDG_SCROLL_PRESET:
         case CDG_SCROLL_COPY:
             if (instr == CDG_SCROLL_PRESET) {
-                printf("INSTR: SCROLL_PRESET\n");
+                log_printf("INSTR: SCROLL_PRESET\n");
                 packet.type = SCROLL_PRESET;
             } else {
-                printf("INSTR: SCROLL_COPY\n");
+                log_printf("INSTR: SCROLL_COPY\n");
                 packet.type = SCROLL_COPY;
             }
 
@@ -326,14 +384,14 @@ CDG_Packet cdg_parse_packet(SubCode *sub)
             packet.data = scroll;
             break;
         case CDG_DEFINE_TRANSPARENT:
-            printf("INSTR: DEFINE_TRANSPARENT\n");
+            log_printf("INSTR: DEFINE_TRANSPARENT\n");
             packet.type = DEFINE_TRANSPARENT;
             packet.data = malloc(sizeof(sub->data[0]));
             sub->data[0] &= 0x0F; // Only lower four bits
             memcpy(packet.data, &sub->data[0], sizeof(sub->data[0]));
             break;
         default: 
-            printf("INSTR: Caught default clause!\n");
+            log_printf("INSTR: Invalid instruction!\n");
             packet.type = EMPTY;
             packet.data = NULL;
             break;
