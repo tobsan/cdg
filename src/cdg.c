@@ -99,7 +99,6 @@ int cdg_process_packet(CDG_Packet *packet, cdg *cdg_state)
                     }
                 }
             }
-            printf("Tile block with color0: %i, color1: %i, row: %i, column: %i\n", tile->color0, tile->color1, tile->row, tile->column);
 
             break;
         }

@@ -138,13 +138,16 @@ typedef struct {
 } CDG_RGB;
 
 /*
- * The state of a cdg renderer
+ * The state needed to go through a cdg file
  */
 typedef struct {
     CDG_RGB color_table[16];
-    unsigned char bg_color; // These three are 4-bit indices to the color_table
-    unsigned char border_color;
+    // One color may be defined as transparent. This is actually
+    // an index into the color table, so when drawing one has to
+    // lookup that the color one is using isn't actually transparent
     unsigned char transparent_color;
+    // The pixels are not actual colors, but each unsigned
+    // char in the matrix is an index to the color_table.
     unsigned char pixels[CDG_SCREEN_WIDTH][CDG_SCREEN_HEIGHT];
 } cdg;
 
