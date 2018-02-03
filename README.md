@@ -4,4 +4,6 @@ typically used for karaoke.
 Building and installing
 =======================
 
+```
 $ make
+```
